@@ -1,6 +1,6 @@
 services:
   db:
-    container_name: postgres
+    container_name: db
     image: postgres:${POSTGRES_VERSION:-15.4}
     restart: unless-stopped
     expose:
@@ -14,7 +14,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
-  cache:
+  redis:
     container_name: redis
     image: redis:${REDIS_VERSION:-7.2.1}
     volumes:
@@ -23,6 +23,48 @@ services:
       - 6379
     ports:
       - 6379:6379
+
+  server:
+    container_name: server
+    build:
+      context: ./backoffice
+      dockerfile: Dockerfile
+      target: server
+    expose:
+      - 9000
+    ports:
+      - 9000:9000
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/postgres
+      - REDIS_URL=redis://redis:6379
+      - WORKER_MODE=server
+      - ADMIN_CORS=${ADMIN_CORS:-http://localhost:3000}
+      - AUTH_CORS=${AUTH_CORS:-http://localhost:3000}
+
+  worker:
+    container_name: worker
+    build:
+      context: ./backoffice
+      dockerfile: Dockerfile
+      target: server
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/postgres
+      - REDIS_URL=redis://redis:6379
+      - WORKER_MODE=worker
+
+  admin:
+    container_name: admin
+    build:
+      context: ./backoffice
+      dockerfile: Dockerfile
+      target: admin
+      args:
+        - BACKEND_URL=${BACKEND_URL:-http://localhost:9000}
+        - ADMIN_PATH=${ADMIN_PATH:-/}
+    expose:
+      - 3000
+    ports:
+      - 3000:3000
 
 volumes:
   redis-data: { driver: local }
