@@ -1,0 +1,29 @@
+services:
+  db:
+    container_name: postgres
+    image: postgres:${POSTGRES_VERSION:-15.4}
+    restart: unless-stopped
+    expose:
+      - 5432
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  cache:
+    container_name: redis
+    image: redis:${REDIS_VERSION:-7.2.1}
+    volumes:
+      - redis-data:/data
+    expose:
+      - 6379
+    ports:
+      - 6379:6379
+
+volumes:
+  redis-data: { driver: local }
+  postgres-data: { driver: local }
