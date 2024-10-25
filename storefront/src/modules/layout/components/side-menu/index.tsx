@@ -57,6 +57,12 @@ const SideMenu = ({ regions }: { regions: HttpTypes.StoreRegion[] | null }) => {
                     </div>
                     <ul className="flex flex-col gap-6 items-start justify-start">
                       {Object.entries(SideMenuItems).map(([name, href]) => {
+                        if (
+                          process.env.NEXT_PUBLIC_FEATURE_SEARCH_ENABLED !==
+                            "true" &&
+                          name === "Search"
+                        )
+                          return
                         return (
                           <li key={name}>
                             <LocalizedClientLink
