@@ -24,6 +24,22 @@ services:
     ports:
       - 6379:6379
 
+  minio:
+    container_name: minio
+    image: minio/minio:${MINIO_VERSION:-RELEASE.2024-10-13T13-34-11Z.fips}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    expose:
+      - "9000"
+      - "9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - 9999:9000
+      - 9001:9001
+
   server:
     container_name: server
     build:
@@ -69,3 +85,4 @@ services:
 volumes:
   redis-data: { driver: local }
   postgres-data: { driver: local }
+  minio-data: { driver: local }
