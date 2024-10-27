@@ -83,5 +83,35 @@ module.exports = defineConfig({
         ],
       },
     },
+    {
+      resolve: "@medusajs/medusa/payment",
+      options: {
+        providers: [
+          {
+            resolve: "@medusajs/medusa/payment-stripe",
+            id: "stripe",
+            options: {
+              apiKey: process.env.STRIPE_API_KEY,
+              capture: true,
+              automatic_payment_methods: true,
+              payment_description: "Thank you for your purchase",
+              // add webhook config after deployment
+              //webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+            },
+          },
+          {
+            resolve: `./src/modules/payment-paypal`,
+            id: "paypal",
+            options: {
+              sandbox: process.env.PAYPAL_SANDBOX,
+              client_id: process.env.PAYPAL_CLIENT_ID,
+              client_secret: process.env.PAYPAL_CLIENT_SECRET,
+              // add webhook config after deployment
+              //auth_webhook_id: process.env.PAYPAL_AUTH_WEBHOOK_ID,
+            },
+          },
+        ],
+      },
+    },
   ],
 });
