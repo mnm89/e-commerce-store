@@ -104,8 +104,8 @@ module.exports = defineConfig({
             id: "paypal",
             options: {
               sandbox: process.env.PAYPAL_SANDBOX,
-              client_id: process.env.PAYPAL_CLIENT_ID,
-              client_secret: process.env.PAYPAL_CLIENT_SECRET,
+              clientId: process.env.PAYPAL_CLIENT_ID,
+              clientSecret: process.env.PAYPAL_CLIENT_SECRET,
               // add webhook config after deployment
               //auth_webhook_id: process.env.PAYPAL_AUTH_WEBHOOK_ID,
             },

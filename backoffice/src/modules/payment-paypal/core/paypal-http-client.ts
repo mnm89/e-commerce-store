@@ -115,20 +115,17 @@ export class PaypalHttpClient {
         method: "POST",
         url: PaypalApiPath.AUTH,
         auth: {
-          username: this.options_.clientId ?? this.options_.client_id,
-          password: this.options_.clientSecret ?? this.options_.client_secret,
+          username: this.options_.clientId,
+          password: this.options_.clientSecret,
         },
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
         },
-        data: {
-          grant_type: "client_credentials",
-        },
+        data: "grant_type=client_credentials",
       },
       originalConfig,
       retryCount
     );
-
     this.accessToken_ = res.access_token;
   }
 }

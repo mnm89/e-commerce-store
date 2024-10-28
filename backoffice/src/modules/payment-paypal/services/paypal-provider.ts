@@ -16,9 +16,16 @@ import {
   PaymentSessionStatus,
 } from "@medusajs/framework/utils";
 import { CreateOrder, PaypalSdk } from "../core";
-import { PaypalOptions, PaypalOrder, PaypalOrderStatus } from "../types";
-import roundToTwo from "../utils/round-to-two";
-import humanizeAmount from "../utils/humanize-amount";
+import {
+  PaypalOptions,
+  PaypalOrder,
+  PaypalOrderStatus,
+  PurchaseUnits,
+} from "../types";
+import {
+  getAmountFromSmallestUnit,
+  getSmallestUnit,
+} from "../utils/get-smallest-unit";
 
 class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
   static identifier = "paypal";
@@ -49,38 +56,6 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
     });
   }
 
-  capturePayment(
-    paymentData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
-    throw new Error("Method not implemented.");
-  }
-  authorizePayment(
-    paymentSessionData: Record<string, unknown>,
-    context: Record<string, unknown>
-  ): Promise<
-    | PaymentProviderError
-    | {
-        status: PaymentSessionStatus;
-        data: PaymentProviderSessionResponse["data"];
-      }
-  > {
-    throw new Error("Method not implemented.");
-  }
-  cancelPayment(
-    paymentData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
-    throw new Error("Method not implemented.");
-  }
-  initiatePayment(
-    context: CreatePaymentProviderSession
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
-    throw new Error("Method not implemented.");
-  }
-  deletePayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
-    throw new Error("Method not implemented.");
-  }
   async getPaymentStatus(
     paymentSessionData: Record<string, unknown>
   ): Promise<PaymentSessionStatus> {
@@ -102,42 +77,12 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
         return PaymentSessionStatus.PENDING;
     }
   }
-  refundPayment(
-    paymentData: Record<string, unknown>,
-    refundAmount: number
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
-    throw new Error("Method not implemented.");
-  }
-  async retrievePayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
-    try {
-      const id = paymentSessionData.id as string;
-      return (await this.paypal_.getOrder(
-        id
-      )) as unknown as PaymentProviderSessionResponse["data"];
-    } catch (e) {
-      return this.buildError("An error occurred in retrievePayment", e);
-    }
-  }
-  updatePayment(
-    context: UpdatePaymentProviderSession
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
-    throw new Error("Method not implemented.");
-  }
-  getWebhookActionAndData(
-    data: ProviderWebhookPayload["payload"]
-  ): Promise<WebhookActionResult> {
-    throw new Error("Method not implemented.");
-  }
-
-  /*  
 
   async initiatePayment(
-    context: CreatePaymentProviderSession
+    input: CreatePaymentProviderSession
   ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
-    const { currency_code, amount, resource_id } = context;
-
+    const { session_id } = input.context;
+    const { currency_code, amount } = input;
     let session_data;
 
     try {
@@ -149,13 +94,10 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
         intent,
         purchase_units: [
           {
-            custom_id: resource_id,
+            custom_id: session_id,
             amount: {
               currency_code: currency_code.toUpperCase(),
-              value: roundToTwo(
-                humanizeAmount(amount, currency_code),
-                currency_code
-              ),
+              value: getSmallestUnit(amount, currency_code),
             },
           },
         ],
@@ -163,9 +105,8 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
     } catch (e) {
       return this.buildError("An error occurred in initiatePayment", e);
     }
-
     return {
-      session_data,
+      data: session_data,
     };
   }
 
@@ -176,28 +117,20 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
     | PaymentProviderError
     | {
         status: PaymentSessionStatus;
-        data: PaymentProviderSessionResponse["session_data"];
+        data: PaymentProviderSessionResponse["data"];
       }
   > {
-    try {
-      const stat = await this.getPaymentStatus(paymentSessionData);
-      const order = (await this.retrievePayment(
-        paymentSessionData
-      )) as PaypalOrder;
-      return { data: order, status: stat };
-    } catch (error) {
-      return this.buildError("An error occurred in authorizePayment", error);
-    }
+    const status = await this.getPaymentStatus(paymentSessionData);
+    return { data: paymentSessionData, status };
   }
 
   async cancelPayment(
     paymentSessionData: Record<string, unknown>
-  ): Promise<
-    PaymentProviderError | PaymentProviderSessionResponse["session_data"]
-  > {
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
     const order = (await this.retrievePayment(
       paymentSessionData
     )) as PaypalOrder;
+    if (!order) return { data: undefined };
 
     const isAlreadyCanceled = order.status === PaypalOrderStatus.VOIDED;
     const isCanceledAndFullyRefund =
@@ -225,9 +158,10 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
         await this.paypal_.cancelAuthorizedPayment(id);
       }
 
-      return (await this.retrievePayment(
+      const data = (await this.retrievePayment(
         paymentSessionData
-      )) as unknown as PaymentProviderSessionResponse["session_data"];
+      )) as unknown as PaymentProviderSessionResponse["data"];
+      return { data };
     } catch (error) {
       return this.buildError("An error occurred in cancelPayment", error);
     }
@@ -235,9 +169,7 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
 
   async capturePayment(
     paymentSessionData: Record<string, unknown>
-  ): Promise<
-    PaymentProviderError | PaymentProviderSessionResponse["session_data"]
-  > {
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
     const { purchase_units } = paymentSessionData as {
       purchase_units: PurchaseUnits;
     };
@@ -251,20 +183,17 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
       return this.buildError("An error occurred in capturePayment", error);
     }
   }
+
   async deletePayment(
     paymentSessionData: Record<string, unknown>
-  ): Promise<
-    PaymentProviderError | PaymentProviderSessionResponse["session_data"]
-  > {
-    return paymentSessionData;
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
+    return await this.cancelPayment(paymentSessionData);
   }
 
   async refundPayment(
     paymentSessionData: Record<string, unknown>,
     refundAmount: number
-  ): Promise<
-    PaymentProviderError | PaymentProviderSessionResponse["session_data"]
-  > {
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
     const { purchase_units } = paymentSessionData as {
       purchase_units: PurchaseUnits;
     };
@@ -285,10 +214,7 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
       await this.paypal_.refundPayment(paymentId, {
         amount: {
           currency_code: currencyCode,
-          value: roundToTwo(
-            humanizeAmount(refundAmount, currencyCode),
-            currencyCode
-          ),
+          value: getSmallestUnit(refundAmount, currencyCode),
         },
       });
 
@@ -298,13 +224,26 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
     }
   }
 
+  async retrievePayment(
+    paymentSessionData: Record<string, unknown>
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
+    try {
+      const id = paymentSessionData.id as string;
+      if (!id) return undefined;
+      const order = await this.paypal_.getOrder(id);
+      return order as unknown as PaymentProviderSessionResponse["data"];
+    } catch (e) {
+      return this.buildError("An error occurred in retrievePayment", e);
+    }
+  }
 
   async updatePayment(
-    context: PaymentProviderContext
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse | void> {
+    input: UpdatePaymentProviderSession
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
     try {
-      const { currency_code, amount } = context;
-      const id = context.paymentSessionData.id as string;
+      const { context, data, currency_code, amount } = input;
+
+      const id = data.id as string;
 
       await this.paypal_.patchOrder(id, [
         {
@@ -313,63 +252,35 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
           value: {
             amount: {
               currency_code: currency_code.toUpperCase(),
-              value: roundToTwo(
-                humanizeAmount(amount, currency_code),
-                currency_code
-              ),
+              value: getSmallestUnit(amount, currency_code),
             },
           },
         },
       ]);
-      return { session_data: context.paymentSessionData };
-    } catch (error) {
-      return await this.initiatePayment(context).catch((e) => {
-        return this.buildError("An error occurred in updatePayment", e);
-      });
-    }
-  }
+      const session_data = (await this.retrievePayment(
+        data
+      )) as unknown as PaymentProviderSessionResponse["data"];
 
-  async updatePaymentData(sessionId: string, data: Record<string, unknown>) {
-    try {
-      // Prevent from updating the amount from here as it should go through
-      // the updatePayment method to perform the correct logic
-      if (data.amount) {
-        throw new MedusaError(
-          MedusaError.Types.INVALID_DATA,
-          "Cannot update amount, use updatePayment instead"
-        );
-      }
-
-      return data;
+      return { data: session_data };
     } catch (e) {
-      return this.buildError("An error occurred in updatePaymentData", e);
+      return this.buildError("An error occurred in updatePayment", e);
     }
   }
-
-  async retrieveOrderFromAuth(authorization) {
-    const link = authorization.links.find((l) => l.rel === "up");
-    const parts = link.href.split("/");
-    const orderId = parts[parts.length - 1];
-
-    if (!orderId) {
-      return null;
-    }
-
-    return await this.paypal_.getOrder(orderId);
+  //TODO
+  async getWebhookActionAndData(
+    data: ProviderWebhookPayload["payload"]
+  ): Promise<WebhookActionResult> {
+    console.info("getWebhookActionAndData : paypal-provider");
+    console.debug(JSON.stringify(data, undefined, 2));
+    throw new Error("Method not implemented.");
   }
-
-  async retrieveAuthorization(id) {
-    return await this.paypal_.getAuthorizationPayment(id);
-  }
-
- 
-
   async verifyWebhook(data) {
     return await this.paypal_.verifyWebhook({
-      webhook_id: this.options_.auth_webhook_id || this.options_.authWebhookId,
+      webhook_id: this.options_.authWebhookId,
       ...data,
     });
-  } */
+  }
+
   protected buildError(
     message: string,
     e: PaymentProviderError | Error
