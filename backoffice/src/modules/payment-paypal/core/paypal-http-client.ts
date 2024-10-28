@@ -1,24 +1,18 @@
 import { Logger } from "@medusajs/framework/types";
 import axios, { AxiosInstance, AxiosRequestConfig, Method } from "axios";
-import {
-  PaypalApiPath,
-  PaypalEnvironmentPaths,
-  PaypalSdkOptions,
-} from "./types";
+import { PaypalApiPath, PaypalEnvironmentPaths } from "./types";
+import { PaypalOptions } from "../types";
 
 const MAX_ATTEMPTS = 2;
 
 export class PaypalHttpClient {
   protected readonly baseUrl_: string = PaypalEnvironmentPaths.LIVE;
   protected readonly httpClient_: AxiosInstance;
-  protected readonly options_: PaypalSdkOptions;
-  protected readonly logger_?: Logger;
+  protected readonly options_: PaypalOptions;
   protected accessToken_: string;
 
-  constructor(options: PaypalSdkOptions) {
+  constructor(options: PaypalOptions) {
     this.options_ = options;
-
-    this.logger_ = options.logger;
 
     if (options.sandbox) {
       this.baseUrl_ = PaypalEnvironmentPaths.SANDBOX;
@@ -101,8 +95,6 @@ export class PaypalHttpClient {
               .apply(this.httpClient_, [config])
               .then((res) => res.data);
           }
-
-          this.logger_?.error(err.response.message);
           throw err;
         });
     };

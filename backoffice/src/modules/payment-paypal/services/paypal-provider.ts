@@ -5,14 +5,18 @@ import {
   PaymentProviderSessionResponse,
   ProviderWebhookPayload,
   WebhookActionResult,
-  Logger,
   CreatePaymentProviderSession,
-  PaymentSessionStatus,
   UpdatePaymentProviderSession,
+  MedusaContainer,
 } from "@medusajs/framework/types";
-import { AbstractPaymentProvider } from "@medusajs/framework/utils";
+import {
+  AbstractPaymentProvider,
+  isDefined,
+  isPaymentProviderError,
+  PaymentSessionStatus,
+} from "@medusajs/framework/utils";
 import { CreateOrder, PaypalSdk } from "../core";
-import { PaypalOptions } from "../types";
+import { PaypalOptions, PaypalOrder, PaypalOrderStatus } from "../types";
 import roundToTwo from "../utils/round-to-two";
 import humanizeAmount from "../utils/humanize-amount";
 
@@ -21,22 +25,27 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
 
   protected readonly options_: PaypalOptions;
   protected paypal_: PaypalSdk;
-  protected readonly logger_: Logger | undefined;
+  protected container_: MedusaContainer;
 
-  constructor({ logger }: { logger?: Logger }, options) {
-    // @ts-ignore
-    // eslint-disable-next-line prefer-rest-params
-    super(...arguments);
-
-    this.logger_ = logger;
-    this.options_ = options;
-    this.init();
+  static validateOptions(options: PaypalOptions): void {
+    if (!isDefined(options.clientSecret)) {
+      throw new Error(
+        "Required option `clientSecret` is missing in paypal plugin"
+      );
+    }
+    if (!isDefined(options.clientId)) {
+      throw new Error("Required option `clientId` is missing in paypal plugin");
+    }
   }
 
-  protected init(): void {
+  constructor(container: MedusaContainer, options: PaypalOptions) {
+    // @ts-ignore
+    super(...arguments);
+
+    this.container_ = container;
+    this.options_ = options;
     this.paypal_ = new PaypalSdk({
       ...this.options_,
-      logger: this.logger_,
     });
   }
 
@@ -72,40 +81,12 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
   ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
     throw new Error("Method not implemented.");
   }
-  getPaymentStatus(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentSessionStatus> {
-    throw new Error("Method not implemented.");
-  }
-  refundPayment(
-    paymentData: Record<string, unknown>,
-    refundAmount: number
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
-    throw new Error("Method not implemented.");
-  }
-  retrievePayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
-    throw new Error("Method not implemented.");
-  }
-  updatePayment(
-    context: UpdatePaymentProviderSession
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
-    throw new Error("Method not implemented.");
-  }
-  getWebhookActionAndData(
-    data: ProviderWebhookPayload["payload"]
-  ): Promise<WebhookActionResult> {
-    throw new Error("Method not implemented.");
-  }
-
-  /*   async getPaymentStatus(
+  async getPaymentStatus(
     paymentSessionData: Record<string, unknown>
   ): Promise<PaymentSessionStatus> {
     const order = (await this.retrievePayment(
       paymentSessionData
     )) as PaypalOrder;
-
     switch (order.status) {
       case PaypalOrderStatus.CREATED:
         return PaymentSessionStatus.PENDING;
@@ -121,6 +102,36 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
         return PaymentSessionStatus.PENDING;
     }
   }
+  refundPayment(
+    paymentData: Record<string, unknown>,
+    refundAmount: number
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
+    throw new Error("Method not implemented.");
+  }
+  async retrievePayment(
+    paymentSessionData: Record<string, unknown>
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
+    try {
+      const id = paymentSessionData.id as string;
+      return (await this.paypal_.getOrder(
+        id
+      )) as unknown as PaymentProviderSessionResponse["data"];
+    } catch (e) {
+      return this.buildError("An error occurred in retrievePayment", e);
+    }
+  }
+  updatePayment(
+    context: UpdatePaymentProviderSession
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
+    throw new Error("Method not implemented.");
+  }
+  getWebhookActionAndData(
+    data: ProviderWebhookPayload["payload"]
+  ): Promise<WebhookActionResult> {
+    throw new Error("Method not implemented.");
+  }
+
+  /*  
 
   async initiatePayment(
     context: CreatePaymentProviderSession
@@ -287,20 +298,6 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
     }
   }
 
-  async retrievePayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<
-    PaymentProviderError | PaymentProviderSessionResponse["session_data"]
-  > {
-    try {
-      const id = paymentSessionData.id as string;
-      return (await this.paypal_.getOrder(
-        id
-      )) as unknown as PaymentProviderSessionResponse["session_data"];
-    } catch (e) {
-      return this.buildError("An error occurred in retrievePayment", e);
-    }
-  }
 
   async updatePayment(
     context: PaymentProviderContext
@@ -365,6 +362,14 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
     return await this.paypal_.getAuthorizationPayment(id);
   }
 
+ 
+
+  async verifyWebhook(data) {
+    return await this.paypal_.verifyWebhook({
+      webhook_id: this.options_.auth_webhook_id || this.options_.authWebhookId,
+      ...data,
+    });
+  } */
   protected buildError(
     message: string,
     e: PaymentProviderError | Error
@@ -377,13 +382,6 @@ class PayPalProviderService extends AbstractPaymentProvider<PaypalOptions> {
         : e.message ?? "",
     };
   }
-
-  async verifyWebhook(data) {
-    return await this.paypal_.verifyWebhook({
-      webhook_id: this.options_.auth_webhook_id || this.options_.authWebhookId,
-      ...data,
-    });
-  } */
 }
 
 export default PayPalProviderService;
